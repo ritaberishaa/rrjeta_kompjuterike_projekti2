@@ -76,8 +76,17 @@ static class ClientHandler implements Runnable {
             System.out.println("Client disconnected: " + socket.getInetAddress().getHostAddress());
         }
     }
-}
 
-        
-  
+    private void logRequest(String clientIP, String message) {
+            try (FileWriter fw = new FileWriter("log.txt", true);
+                 BufferedWriter bw = new BufferedWriter(fw);
+                 PrintWriter logWriter = new PrintWriter(bw)) {
+                String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                logWriter.println("IP: " + clientIP + " | Koha: " + timeStamp + " | Mesazhi: " + message);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+     }
+
 }
