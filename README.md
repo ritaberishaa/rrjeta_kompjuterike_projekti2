@@ -14,4 +14,5 @@ Qasje e kufizuar për klientët: klienti i parë që lidhet merr privilegje të 
 Teknologjitë e përdorura:
 
 Java: gjuha kryesore e programimit për zhvillimin e serverit dhe klientit.
+
 DatagramSocket dhe DatagramPacket: klasa të Java për komunikimin UDP.
