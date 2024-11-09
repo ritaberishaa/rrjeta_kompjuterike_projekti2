@@ -5,88 +5,60 @@ import java.util.Date;
 import java.util.concurrent.*;
 
 public class Server {
+    private static final int PORT = 12345;
+    private static final int BUFFER_SIZE = 1024;
+    private static ConcurrentHashMap<String, Boolean> clients = new ConcurrentHashMap<>();
 
-private static final int PORT = 12345;
-private static final int MAX_CONNECTIONS = 5;
-private static ConcurrentHashMap<String, ClientHandler> clients = new ConcurrentHashMap<>();
+    public static void main(String[] args) {
+        System.out.println("Server listening on port: " + PORT);
 
-public static void main(String[] args) {
-    System.out.println("Server listening on port: " + PORT);
-    try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-        while (true) {
-            if (clients.size() < MAX_CONNECTIONS) {
-                Socket clientSocket = serverSocket.accept();
-                String clientIP = clientSocket.getInetAddress().getHostAddress();
-                System.out.println("Client connected: " + clientIP);
-                
-                ClientHandler clientHandler = new ClientHandler(clientSocket);
-                clients.put(clientIP, clientHandler);
-                
-                new Thread(clientHandler).start();
-            } else {
-                System.out.println("Max connection capacity reached. Waiting...");
-            }
-        }
-    } catch (IOException e) {
-        e.printStackTrace();
-    }
-}
+        try (DatagramSocket serverSocket = new DatagramSocket(PORT)) {
+            byte[] receiveData = new byte[BUFFER_SIZE];
 
-static class ClientHandler implements Runnable {
-    private Socket socket;
-    private BufferedReader in;
-    private PrintWriter out;
-    private boolean hasFullAccess;
+            while (true) {
+                // Merr mesazhin nga klienti
+                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+                serverSocket.receive(receivePacket);
 
-    public ClientHandler(Socket socket) {
-        this.socket = socket;
-        this.hasFullAccess = clients.size() == 0;
-    }
+                String message = new String(receivePacket.getData(), 0, receivePacket.getLength());
+                String clientIP = receivePacket.getAddress().getHostAddress();
 
-    @Override
-    public void run() {
-        try {
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out = new PrintWriter(socket.getOutputStream(), true);
+                System.out.println("Message received from client " + clientIP + ": " + message);
 
-            String inputLine;
-            while ((inputLine = in.readLine()) != null) {
-                logRequest(socket.getInetAddress().getHostAddress(), inputLine);
-                System.out.println("Message received from client: " + inputLine);
-
-                if (inputLine.equalsIgnoreCase("exit")) {
-                    break;
+                if (message.equalsIgnoreCase("exit")) {
+                    System.out.println("Client disconnected: " + clientIP);
+                    clients.remove(clientIP);
+                    continue;
                 }
 
-                if (hasFullAccess) {
-                    out.println("Full access: Message received - " + inputLine);
-                } else {
-                    out.println("Read-only: Message received - " + inputLine);
-                }
+                // Log mesazhin
+                logRequest(clientIP, message);
+
+                // Përgjigju klientit
+                String response = (clients.getOrDefault(clientIP, false)) ?
+                        "Full access: Message received - " + message :
+                        "Read-only: Message received - " + message;
+
+                byte[] sendData = response.getBytes();
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, receivePacket.getAddress(), receivePacket.getPort());
+                serverSocket.send(sendPacket);
+
+                // Vendos qasje për klientin e parë
+                clients.putIfAbsent(clientIP, clients.size() == 0);
             }
         } catch (IOException e) {
             e.printStackTrace();
-        } finally {
-            try {
-                socket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            clients.remove(socket.getInetAddress().getHostAddress());
-            System.out.println("Client disconnected: " + socket.getInetAddress().getHostAddress());
         }
     }
 
-    private void logRequest(String clientIP, String message) {
-            try (FileWriter fw = new FileWriter("log.txt", true);
-                 BufferedWriter bw = new BufferedWriter(fw);
-                 PrintWriter logWriter = new PrintWriter(bw)) {
-                String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-                logWriter.println("IP: " + clientIP + " | Koha: " + timeStamp + " | Mesazhi: " + message);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+    private static void logRequest(String clientIP, String message) {
+        try (FileWriter fw = new FileWriter("log.txt", true);
+             BufferedWriter bw = new BufferedWriter(fw);
+             PrintWriter logWriter = new PrintWriter(bw)) {
+            String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+            logWriter.println("IP: " + clientIP + " | Koha: " + timeStamp + " | Mesazhi: " + message);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-     }
-
+    }
 }

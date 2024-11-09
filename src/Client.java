@@ -2,33 +2,37 @@ import java.io.*;
 import java.net.*;
 
 public class Client {
-    private static final String SERVER_ADDRESS = "172.16.110.103";
+    private static final String SERVER_ADDRESS = "127.0.0.1";
     private static final int PORT = 12345;
-
+    private static final int BUFFER_SIZE = 1024;
     public static void main(String[] args) {
-        try (Socket socket = new Socket(SERVER_ADDRESS, PORT);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-             BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))) {
+        try (DatagramSocket socket = new DatagramSocket();
+             BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))){
 
-            System.out.println("Lidhur me serverin në portin " + PORT);
+
+            System.out.println("Jemi lidhur me serverin ne portin "+PORT);
 
             String message;
             while (true) {
                 System.out.print("Shkruaj mesazhin (ose 'exit' për të dalë): ");
                 message = userInput.readLine();
+
                 if (message.equalsIgnoreCase("exit")) {
-                    out.println(message);
                     break;
                 }
 
-                out.println(message);
-                String response = in.readLine();
+                byte[] sendData = message.getBytes();
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(SERVER_ADDRESS), PORT);
+                socket.send(sendPacket);
+
+                byte[] receiveData = new byte[BUFFER_SIZE];
+                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+                socket.receive(receivePacket);
+
+                String response = new String(receivePacket.getData(), 0, receivePacket.getLength());
                 System.out.println("Serveri tha: " + response);
             }
 
-        } catch (ConnectException e) {
-            System.out.println("Nuk mund të lidhet me serverin. Kontrolloni nëse serveri është aktiv dhe provoni përsëri.");
         } catch (IOException e) {
             e.printStackTrace();
         }
