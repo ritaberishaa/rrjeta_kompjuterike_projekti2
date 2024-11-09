@@ -1,39 +1,65 @@
 import java.io.*;
 import java.net.*;
+import java.util.Scanner;
 
 public class Client {
     private static final String SERVER_ADDRESS = "127.0.0.1";
-    private static final int PORT = 12345;
-    private static final int BUFFER_SIZE = 1024;
+    private static final int SERVER_PORT = 12345;
+    private static String token = null;
     public static void main(String[] args) {
-        try (DatagramSocket socket = new DatagramSocket();
-             BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))){
+        try (DatagramSocket clientSocket = new DatagramSocket()) {
+            InetAddress serverAddress = InetAddress.getByName(SERVER_ADDRESS);
+            byte[] receiveBuffer = new byte[1024];
 
+            // Step 1: Request a token from the server
+            Scanner scanner2= new Scanner(System.in);
+            String commanda = scanner2.nextLine().trim();
+            String requestTokenMessage = commanda;//"REQUEST_TOKEN";
+            byte[] sendBuffer = requestTokenMessage.getBytes();
+            DatagramPacket requestPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
+            clientSocket.send(requestPacket);
 
-            System.out.println("Jemi lidhur me serverin ne portin "+PORT);
+            // Receive token from server
+            DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+            clientSocket.receive(receivePacket);
+            String response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+            System.out.println("Server response: " + response);
 
-            String message;
+            // Extract the token from the response
+            if (response.startsWith("Your token: ")) {
+                token = response.split("\n")[0].replace("Your token: ", "").trim();
+                System.out.println("Received token: " + token);
+            } else {
+                System.out.println("Failed to obtain a token. Exiting.");
+                return;
+            }
+
+            // Step 2: Send commands to the server
+            Scanner scanner = new Scanner(System.in);
             while (true) {
-                System.out.print("Shkruaj mesazhin (ose 'exit' për të dalë): ");
-                message = userInput.readLine();
+                System.out.print("Enter command (--help, --read, --write) or 'exit' to quit: ");
+                String command = scanner.nextLine().trim();
 
-                if (message.equalsIgnoreCase("exit")) {
+                if (command.equalsIgnoreCase("exit")) {
+                    System.out.println("Exiting client...");
                     break;
                 }
 
-                byte[] sendData = message.getBytes();
-                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(SERVER_ADDRESS), PORT);
-                socket.send(sendPacket);
+                // Send the command with the token to the server
+                String message = token + " " + command;
+                sendBuffer = message.getBytes();
+                DatagramPacket commandPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
+                clientSocket.send(commandPacket);
 
-                byte[] receiveData = new byte[BUFFER_SIZE];
-                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                socket.receive(receivePacket);
-
-                String response = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                System.out.println("Serveri tha: " + response);
+                // Receive the server's response
+                receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                clientSocket.receive(receivePacket);
+                response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+                System.out.println("Server response: " + response);
             }
 
-        } catch (IOException e) {
+            scanner.close();
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }

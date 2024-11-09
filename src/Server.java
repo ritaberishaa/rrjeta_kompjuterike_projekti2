@@ -2,63 +2,118 @@ import java.io.*;
 import java.net.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.*;
 
 public class Server {
-    private static final int PORT = 12345;
-    private static final int BUFFER_SIZE = 1024;
-    private static ConcurrentHashMap<String, Boolean> clients = new ConcurrentHashMap<>();
+    private static final int SERVER_PORT = 12345;
+    private DatagramSocket serverSocket;
+    private Map<String, ClientInfo> clientMap = new HashMap<>();
+    private String privilegedToken = null;
 
-    public static void main(String[] args) {
-        System.out.println("Server listening on port: " + PORT);
+    public Server() throws Exception {
+        serverSocket = new DatagramSocket(SERVER_PORT);
+        System.out.println("Server is running in port: "+SERVER_PORT);
+    }
 
-        try (DatagramSocket serverSocket = new DatagramSocket(PORT)) {
-            byte[] receiveData = new byte[BUFFER_SIZE];
+    private class ClientInfo {
+        InetAddress address;
+        int port;
+        boolean isPrivileged;
 
-            while (true) {
-                // Merr mesazhin nga klienti
-                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                serverSocket.receive(receivePacket);
-
-                String message = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                String clientIP = receivePacket.getAddress().getHostAddress();
-
-                System.out.println("Message received from client " + clientIP + ": " + message);
-
-                if (message.equalsIgnoreCase("exit")) {
-                    System.out.println("Client disconnected: " + clientIP);
-                    clients.remove(clientIP);
-                    continue;
-                }
-
-                // Log mesazhin
-                logRequest(clientIP, message);
-
-                // Përgjigju klientit
-                String response = (clients.getOrDefault(clientIP, false)) ?
-                        "Full access: Message received - " + message :
-                        "Read-only: Message received - " + message;
-
-                byte[] sendData = response.getBytes();
-                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, receivePacket.getAddress(), receivePacket.getPort());
-                serverSocket.send(sendPacket);
-
-                // Vendos qasje për klientin e parë
-                clients.putIfAbsent(clientIP, clients.size() == 0);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        public ClientInfo(InetAddress address, int port, boolean isPrivileged) {
+            this.address = address;
+            this.port = port;
+            this.isPrivileged = isPrivileged;
         }
     }
 
-    private static void logRequest(String clientIP, String message) {
-        try (FileWriter fw = new FileWriter("log.txt", true);
-             BufferedWriter bw = new BufferedWriter(fw);
-             PrintWriter logWriter = new PrintWriter(bw)) {
-            String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-            logWriter.println("IP: " + clientIP + " | Koha: " + timeStamp + " | Mesazhi: " + message);
-        } catch (IOException e) {
+
+    public void start() throws Exception {
+        byte[] receiveBuffer = new byte[1024];
+
+        while (true) {
+            DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+            serverSocket.receive(receivePacket);
+
+            InetAddress clientAddress = receivePacket.getAddress();
+            int clientPort = receivePacket.getPort();
+            String message = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+
+            if (message.equals("REQUEST_TOKEN")) {
+                // Generate a unique token for the client
+                String token = UUID.randomUUID().toString();
+                boolean isPrivileged = privilegedToken == null; // First client gets privileged access
+                if (isPrivileged) {
+                    privilegedToken = token;
+                }
+
+
+                // Save client info
+                clientMap.put(token, new ClientInfo(clientAddress, clientPort, isPrivileged));
+
+                // Send the token to the client
+                String response = "Your token: " + token + (isPrivileged ? " (privileged)" : " (read-only)");
+                byte[] sendBuffer = response.getBytes();
+                DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
+                serverSocket.send(sendPacket);
+
+                System.out.println("Assigned token: " + token + " to client at " + clientAddress + ":" + clientPort);
+            } else {
+                // Extract token and command from the message
+                message = message.replace("(privileged) ", "").trim();
+                String[] parts = message.split(" ", 3);
+                if (parts.length < 2) {
+                    continue; // Invalid message format
+                }
+                String token = parts[0];
+                System.out.println(token);
+                String command = parts[2];
+                System.out.println(command);
+
+                // Validate the token and get client info
+                ClientInfo clientInfo = clientMap.get(token);
+                String response;
+                if (clientInfo != null && clientInfo.address.equals(clientAddress) && clientInfo.port == clientPort) {
+                    boolean hasPrivileges = clientInfo.isPrivileged;
+
+                    // Process command based on privilege level
+                    switch (command.toLowerCase()) {
+                        case "--help":
+                            response = hasPrivileges ? "Privileged help content." : "Regular help content.";
+                            break;
+                        case "--read":
+                            response = "Reading data...";
+                            break;
+                        case "--write":
+                            response = hasPrivileges ? "Writing data..." : "Permission denied.";
+                            break;
+                        default:
+                            response = "Unknown command. Type --help for a list of available commands.";
+                    }
+                } else {
+                    response = "Invalid or expired token.";
+                }
+
+                // Send response to client
+                byte[] sendBuffer = response.getBytes();
+                DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
+                serverSocket.send(sendPacket);
+
+                System.out.println("Received command: '" + command + "' with token: '" + token + "' from " + clientAddress + ":" + clientPort);
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        try {
+            Server server = new Server();
+            server.start();
+        } catch (Exception e) {
             e.printStackTrace();
         }
+
     }
 }
