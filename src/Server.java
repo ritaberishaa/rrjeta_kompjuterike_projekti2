@@ -1,19 +1,15 @@
 import java.io.*;
 import java.net.*;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.*;
 
 public class Server {
     private static final int SERVER_PORT = 12345;
-    private DatagramSocket serverSocket;
     private static final String ADMIN_PASSWORD = "admin123";
-    private static final String LOG_FILE = "audit_log.txt";
+    private static final String LOG_FILE = "src//log.txt";
+    private static final String LOG_FILE1 = "audit_log.txt";
     private static Map<String, Boolean> tokenMap = new HashMap<>();
-
+    private DatagramSocket serverSocket;
 
     public static void main(String[] args) {
         try (DatagramSocket serverSocket = new DatagramSocket(SERVER_PORT)) {
@@ -28,54 +24,37 @@ public class Server {
                 InetAddress clientAddress = receivePacket.getAddress();
                 int clientPort = receivePacket.getPort();
 
-                String response;
+                logMessage(clientAddress, message);
 
-                // Check if it's a new client requesting a token
-                //if (message.equalsIgnoreCase("REQUEST_TOKEN")) {
-                // Send a prompt for the admin password
-                //    response = "Shenoni passwordin: ";
-                //}
-                // Handle password response for admin token request
-                //else
+                String response;
                 if (message.equals(ADMIN_PASSWORD)) {
                     String token = UUID.randomUUID().toString();
                     tokenMap.put(token, true); // true indicates admin privileges
                     response = "Your admin token: " + token;
-                }
-                // Handle non-admin token requests
-                else if (message.split(" ").length == 1) {
-                    // Generate a standard token for non-admin users
+                } else if (message.split(" ").length == 1) {
                     String token = UUID.randomUUID().toString();
                     tokenMap.put(token, false); // false indicates regular privileges
                     response = "Your token: " + token;
-                }
-                // Handle command requests with tokens
-                else {
+                } else {
                     String[] parts;
                     String token = null;
-                    String command=null;
-                    System.out.println(message);
-                    if(message.startsWith("Your admin token:")){
-                        String[] mainParts = message.split("token: ", 2); // Separate prefix from token and command
+                    String command = null;
+                    System.out.println("Received message: " + message); // Log the received message
+                    if (message.startsWith("Your admin token:")) {
+                        String[] mainParts = message.split("token: ", 2);
                         if (mainParts.length > 1) {
-                            String[] tokenAndCommand = mainParts[1].split(" ", 2); // Separate token and command
-                            token = tokenAndCommand[0]; // Extract the token
+                            String[] tokenAndCommand = mainParts[1].split(" ", 2);
+                            token = tokenAndCommand[0];
                             command = tokenAndCommand.length > 1 ? tokenAndCommand[1] : "";
-                            //parts=message.split("",3);
-                            //token=parts[2];
-                            //command=parts[3];
                         }
-                    }else {
+                    } else {
                         parts = message.split(" ", 2);
                         token = parts[0];
                         command = parts[1];
                     }
-                    System.out.println("mesazhi: "+message);
-                    System.out.println("tokeni: "+ token);
-                    System.out.println("komanda: "+command);
-                    // Check if the token is valid
-                   
-if (tokenMap.containsKey(token)) {
+                    System.out.println("Token: " + token + ", Command: " + command);
+
+                    if (tokenMap.containsKey(token)) {
                         boolean isAdmin = tokenMap.get(token);
                         switch (command) {
                             case "--help":
@@ -105,7 +84,7 @@ if (tokenMap.containsKey(token)) {
                                 }
                                 break;
 
-                             case "--list_files":
+                            case "--list_files":
                                 if (isAdmin) {
                                     response = listFilesInDirectory("src");
                                 } else {
@@ -122,7 +101,11 @@ if (tokenMap.containsKey(token)) {
 
                     System.out.println("Received command: '" + command + "' with token: '" + token + "' from " + clientAddress + ":" + clientPort);
                 }
-                // Send response to client
+
+                if (!message.startsWith("--")) {
+                    System.out.println("Client message: " + message); // Show message from client
+                }
+
                 byte[] sendBuffer = response.getBytes();
                 DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
                 serverSocket.send(sendPacket);
@@ -131,7 +114,39 @@ if (tokenMap.containsKey(token)) {
             e.printStackTrace();
         }
     }
-     private static String listActiveTokens() {
+
+    private static void logMessage(InetAddress clientAddress, String message) {
+        try (BufferedWriter logWriter = new BufferedWriter(new FileWriter(LOG_FILE1, true))) {
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+            logWriter.write("[" + timestamp + "] [" + clientAddress.getHostAddress() + "] " + message + "\n");
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
+
+    private static String readFile(String filePath) {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        } catch (IOException e) {
+            return "Error reading file: " + e.getMessage();
+        }
+        return content.toString();
+    }
+
+    private static String writeFile(String content) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("src//write.txt", true))) {
+            writer.write(content);
+        } catch (IOException e) {
+            return "Error writing to file: " + e.getMessage();
+        }
+        return "Write command executed successfully.";
+    }
+
+    private static String listActiveTokens() {
         StringBuilder tokenStatus = new StringBuilder("Active tokens:\n");
         for (Map.Entry<String, Boolean> entry : tokenMap.entrySet()) {
             tokenStatus.append("Token: ").append(entry.getKey())
