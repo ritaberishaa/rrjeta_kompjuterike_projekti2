@@ -123,4 +123,12 @@ if (tokenMap.containsKey(token)) {
             e.printStackTrace();
         }
     }
+     private static String listActiveTokens() {
+        StringBuilder tokenStatus = new StringBuilder("Active tokens:\n");
+        for (Map.Entry<String, Boolean> entry : tokenMap.entrySet()) {
+            tokenStatus.append("Token: ").append(entry.getKey())
+                    .append(" - Admin: ").append(entry.getValue()).append("\n");
+        }
+        return tokenStatus.toString();
+    }
 }
