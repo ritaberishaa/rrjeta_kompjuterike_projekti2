@@ -74,36 +74,46 @@ public class Server {
                     System.out.println("tokeni: "+ token);
                     System.out.println("komanda: "+command);
                     // Check if the token is valid
-                    if (tokenMap.containsKey(token)) {
+                   
+if (tokenMap.containsKey(token)) {
                         boolean isAdmin = tokenMap.get(token);
-
-                        // Execute the command based on privileges
                         switch (command) {
                             case "--help":
-                                response = "Available commands: --help, --read, --write";
+                                response = "Available commands: --help, --read, --write, --execute";
                                 if (isAdmin) {
                                     response += " (Admin only)";
                                 }
                                 break;
+
                             case "--read":
-                                response = "Read command executed.";
+                                response = readFile(LOG_FILE);
                                 break;
+
                             case "--write":
                                 if (isAdmin) {
-                                    response = "Write command executed.";
+                                    response = writeFile("Shkruan nga komanda --write në " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
                                 } else {
                                     response = "Permission denied. Admins only.";
                                 }
                                 break;
+
+                            case "--execute":
+                                if (isAdmin) {
+                                    response = listActiveTokens();
+                                } else {
+                                    response = "Permission denied. Admins only.";
+                                }
+                                break;
+
                             default:
                                 response = "Invalid command.";
                         }
                     } else {
                         response = "Invalid or expired token.";
                     }
+
                     System.out.println("Received command: '" + command + "' with token: '" + token + "' from " + clientAddress + ":" + clientPort);
                 }
-
                 // Send response to client
                 byte[] sendBuffer = response.getBytes();
                 DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
