@@ -7,35 +7,58 @@ public class Client {
     private static final int SERVER_PORT = 12345;
     private static String token = null;
     public static void main(String[] args) {
+
         try (DatagramSocket clientSocket = new DatagramSocket()) {
             InetAddress serverAddress = InetAddress.getByName(SERVER_ADDRESS);
             byte[] receiveBuffer = new byte[1024];
+            Scanner scanner = new Scanner(System.in);
 
-            // Step 1: Request a token from the server
-            Scanner scanner2= new Scanner(System.in);
-            String commanda = scanner2.nextLine().trim();
-            String requestTokenMessage = commanda;//"REQUEST_TOKEN";
-            byte[] sendBuffer = requestTokenMessage.getBytes();
+            System.out.print("Enter initial command or 'REQUEST_TOKEN' to start: ");
+            String initialCommand = scanner.nextLine().trim();
+            byte[] sendBuffer = initialCommand.getBytes();
             DatagramPacket requestPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
             clientSocket.send(requestPacket);
 
-            // Receive token from server
+            // Receive server's response (either a token or password prompt)
             DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
             clientSocket.receive(receivePacket);
             String response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
-            System.out.println("Server response: " + response);
+            //System.out.println("Server response: " + response);
 
-            // Extract the token from the response
-            if (response.startsWith("Your token: ")) {
-                token = response.split("\n")[0].replace("Your token: ", "").trim();
+            // Step 2: Handle admin password if prompted
+            if (response.startsWith("Your admin token: ")) {
+                System.out.print("Enter admin password: ");
+                String password = scanner.nextLine().trim();
+
+                // Send the password to the server
+                sendBuffer = password.getBytes();
+                DatagramPacket passwordPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
+                clientSocket.send(passwordPacket);
+
+                // Receive the response after sending the password
+                receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                clientSocket.receive(receivePacket);
+                String passwordResponse = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+                System.out.println("Server response: " + passwordResponse);
+
+                // Check if the response contains a token
+                if (passwordResponse.startsWith("Your admin token: ")) {
+                    token = passwordResponse.replace("Your token: ", "").trim();
+                    System.out.println("Received admin token: " + token);
+                } else {
+                    System.out.println("Failed to obtain admin token. Incorrect password, Exiting.");
+                    return;
+                }
+            } else if (response.startsWith("Your token: ")) {
+                // If the server directly gives a token without a password
+                token = response.replace("Your token: ", "").trim();
                 System.out.println("Received token: " + token);
             } else {
                 System.out.println("Failed to obtain a token. Exiting.");
                 return;
             }
 
-            // Step 2: Send commands to the server
-            Scanner scanner = new Scanner(System.in);
+            // Step 3: Send commands to the server using the token
             while (true) {
                 System.out.print("Enter command (--help, --read, --write) or 'exit' to quit: ");
                 String command = scanner.nextLine().trim();
@@ -45,7 +68,7 @@ public class Client {
                     break;
                 }
 
-                // Send the command with the token to the server
+                // Format message as "token command" to ensure correct parsing on the server side
                 String message = token + " " + command;
                 sendBuffer = message.getBytes();
                 DatagramPacket commandPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
@@ -54,8 +77,8 @@ public class Client {
                 // Receive the server's response
                 receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
                 clientSocket.receive(receivePacket);
-                response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
-                System.out.println("Server response: " + response);
+                String commandResponse = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+                System.out.println("Server response: " + commandResponse);
             }
 
             scanner.close();
@@ -63,4 +86,5 @@ public class Client {
             e.printStackTrace();
         }
     }
+
 }

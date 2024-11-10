@@ -10,110 +10,107 @@ import java.util.concurrent.*;
 public class Server {
     private static final int SERVER_PORT = 12345;
     private DatagramSocket serverSocket;
-    private Map<String, ClientInfo> clientMap = new HashMap<>();
-    private String privilegedToken = null;
+    private static final String ADMIN_PASSWORD = "admin123";
 
-    public Server() throws Exception {
-        serverSocket = new DatagramSocket(SERVER_PORT);
-        System.out.println("Server is running in port: "+SERVER_PORT);
-    }
-
-    private class ClientInfo {
-        InetAddress address;
-        int port;
-        boolean isPrivileged;
-
-        public ClientInfo(InetAddress address, int port, boolean isPrivileged) {
-            this.address = address;
-            this.port = port;
-            this.isPrivileged = isPrivileged;
-        }
-    }
+    private static Map<String, Boolean> tokenMap = new HashMap<>();
 
 
-    public void start() throws Exception {
-        byte[] receiveBuffer = new byte[1024];
+    public static void main(String[] args) {
+        try (DatagramSocket serverSocket = new DatagramSocket(SERVER_PORT)) {
+            System.out.println("Server is running...");
 
-        while (true) {
-            DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
-            serverSocket.receive(receivePacket);
+            byte[] receiveBuffer = new byte[1024];
+            while (true) {
+                DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                serverSocket.receive(receivePacket);
 
-            InetAddress clientAddress = receivePacket.getAddress();
-            int clientPort = receivePacket.getPort();
-            String message = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+                String message = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+                InetAddress clientAddress = receivePacket.getAddress();
+                int clientPort = receivePacket.getPort();
 
-            if (message.equals("REQUEST_TOKEN")) {
-                // Generate a unique token for the client
-                String token = UUID.randomUUID().toString();
-                boolean isPrivileged = privilegedToken == null; // First client gets privileged access
-                if (isPrivileged) {
-                    privilegedToken = token;
-                }
-
-
-                // Save client info
-                clientMap.put(token, new ClientInfo(clientAddress, clientPort, isPrivileged));
-
-                // Send the token to the client
-                String response = "Your token: " + token + (isPrivileged ? " (privileged)" : " (read-only)");
-                byte[] sendBuffer = response.getBytes();
-                DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
-                serverSocket.send(sendPacket);
-
-                System.out.println("Assigned token: " + token + " to client at " + clientAddress + ":" + clientPort);
-            } else {
-                // Extract token and command from the message
-                message = message.replace("(privileged) ", "").trim();
-                String[] parts = message.split(" ", 3);
-                if (parts.length < 2) {
-                    continue; // Invalid message format
-                }
-                String token = parts[0];
-                System.out.println(token);
-                String command = parts[2];
-                System.out.println(command);
-
-                // Validate the token and get client info
-                ClientInfo clientInfo = clientMap.get(token);
                 String response;
-                if (clientInfo != null && clientInfo.address.equals(clientAddress) && clientInfo.port == clientPort) {
-                    boolean hasPrivileges = clientInfo.isPrivileged;
 
-                    // Process command based on privilege level
-                    switch (command.toLowerCase()) {
-                        case "--help":
-                            response = hasPrivileges ? "Privileged help content." : "Regular help content.";
-                            break;
-                        case "--read":
-                            response = "Reading data...";
-                            break;
-                        case "--write":
-                            response = hasPrivileges ? "Writing data..." : "Permission denied.";
-                            break;
-                        default:
-                            response = "Unknown command. Type --help for a list of available commands.";
+                // Check if it's a new client requesting a token
+                //if (message.equalsIgnoreCase("REQUEST_TOKEN")) {
+                // Send a prompt for the admin password
+                //    response = "Shenoni passwordin: ";
+                //}
+                // Handle password response for admin token request
+                //else
+                if (message.equals(ADMIN_PASSWORD)) {
+                    String token = UUID.randomUUID().toString();
+                    tokenMap.put(token, true); // true indicates admin privileges
+                    response = "Your admin token: " + token;
+                }
+                // Handle non-admin token requests
+                else if (message.split(" ").length == 1) {
+                    // Generate a standard token for non-admin users
+                    String token = UUID.randomUUID().toString();
+                    tokenMap.put(token, false); // false indicates regular privileges
+                    response = "Your token: " + token;
+                }
+                // Handle command requests with tokens
+                else {
+                    String[] parts;
+                    String token = null;
+                    String command=null;
+                    System.out.println(message);
+                    if(message.startsWith("Your admin token:")){
+                        String[] mainParts = message.split("token: ", 2); // Separate prefix from token and command
+                        if (mainParts.length > 1) {
+                            String[] tokenAndCommand = mainParts[1].split(" ", 2); // Separate token and command
+                            token = tokenAndCommand[0]; // Extract the token
+                            command = tokenAndCommand.length > 1 ? tokenAndCommand[1] : "";
+                            //parts=message.split("",3);
+                            //token=parts[2];
+                            //command=parts[3];
+                        }
+                    }else {
+                        parts = message.split(" ", 2);
+                        token = parts[0];
+                        command = parts[1];
                     }
-                } else {
-                    response = "Invalid or expired token.";
+                    System.out.println("mesazhi: "+message);
+                    System.out.println("tokeni: "+ token);
+                    System.out.println("komanda: "+command);
+                    // Check if the token is valid
+                    if (tokenMap.containsKey(token)) {
+                        boolean isAdmin = tokenMap.get(token);
+
+                        // Execute the command based on privileges
+                        switch (command) {
+                            case "--help":
+                                response = "Available commands: --help, --read, --write";
+                                if (isAdmin) {
+                                    response += " (Admin only)";
+                                }
+                                break;
+                            case "--read":
+                                response = "Read command executed.";
+                                break;
+                            case "--write":
+                                if (isAdmin) {
+                                    response = "Write command executed.";
+                                } else {
+                                    response = "Permission denied. Admins only.";
+                                }
+                                break;
+                            default:
+                                response = "Invalid command.";
+                        }
+                    } else {
+                        response = "Invalid or expired token.";
+                    }
+                    System.out.println("Received command: '" + command + "' with token: '" + token + "' from " + clientAddress + ":" + clientPort);
                 }
 
                 // Send response to client
                 byte[] sendBuffer = response.getBytes();
                 DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
                 serverSocket.send(sendPacket);
-
-                System.out.println("Received command: '" + command + "' with token: '" + token + "' from " + clientAddress + ":" + clientPort);
             }
-        }
-    }
-
-    public static void main(String[] args) {
-        try {
-            Server server = new Server();
-            server.start();
         } catch (Exception e) {
             e.printStackTrace();
         }
-
     }
 }
