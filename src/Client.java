@@ -6,9 +6,12 @@ public class Client {
     private static final String SERVER_ADDRESS = "127.0.0.1";
     private static final int SERVER_PORT = 12345;
     private static String token = null;
+    private static DatagramSocket clientSocket = null;
+
     public static void main(String[] args) {
 
-        try (DatagramSocket clientSocket = new DatagramSocket()) {
+        try {
+            clientSocket = new DatagramSocket();
             InetAddress serverAddress = InetAddress.getByName(SERVER_ADDRESS);
             byte[] receiveBuffer = new byte[1024];
             Scanner scanner = new Scanner(System.in);
@@ -23,7 +26,6 @@ public class Client {
             DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
             clientSocket.receive(receivePacket);
             String response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
-            //System.out.println("Server response: " + response);
 
             // Step 2: Handle admin password if prompted
             if (response.startsWith("Your admin token: ")) {
@@ -47,6 +49,7 @@ public class Client {
                     System.out.println("Received admin token: " + token);
                 } else {
                     System.out.println("Failed to obtain admin token. Incorrect password, Exiting.");
+                    clientSocket.close();  // Mbyllni socket-in kur dështoni
                     return;
                 }
             } else if (response.startsWith("Your token: ")) {
@@ -55,12 +58,13 @@ public class Client {
                 System.out.println("Received token: " + token);
             } else {
                 System.out.println("Failed to obtain a token. Exiting.");
+                clientSocket.close();  // Mbyllni socket-in kur dështoni
                 return;
             }
 
             // Step 3: Send commands to the server using the token
             while (true) {
-                System.out.print("Enter command (--help, --read, --write) or 'exit' to quit: ");
+                System.out.print("Enter command (--help, --read, --write, --execute, --list_files) or 'exit' to quit: ");
                 String command = scanner.nextLine().trim();
 
                 if (command.equalsIgnoreCase("exit")) {
@@ -68,23 +72,27 @@ public class Client {
                     break;
                 }
 
-                // Format message as "token command" to ensure correct parsing on the server side
                 String message = token + " " + command;
                 sendBuffer = message.getBytes();
                 DatagramPacket commandPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
                 clientSocket.send(commandPacket);
 
-                // Receive the server's response
                 receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
                 clientSocket.receive(receivePacket);
                 String commandResponse = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+
+                if (commandResponse.equals("You have been disconnected due to inactivity.")) {
+                    System.out.println(commandResponse);
+                    break;
+                }
+
                 System.out.println("Server response: " + commandResponse);
             }
 
+            clientSocket.close();
             scanner.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
-
 }
