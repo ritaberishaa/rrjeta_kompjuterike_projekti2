@@ -1,4 +1,3 @@
-import java.io.*;
 import java.net.*;
 import java.util.Scanner;
 
@@ -9,7 +8,6 @@ public class Client {
     private static DatagramSocket clientSocket = null;
 
     public static void main(String[] args) {
-
         try {
             clientSocket = new DatagramSocket();
             InetAddress serverAddress = InetAddress.getByName(SERVER_ADDRESS);
@@ -22,47 +20,47 @@ public class Client {
             DatagramPacket requestPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
             clientSocket.send(requestPacket);
 
-            // Receive server's response (either a token or password prompt)
+
             DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
             clientSocket.receive(receivePacket);
             String response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
 
-            // Step 2: Handle admin password if prompted
+
             if (response.startsWith("Your admin token: ")) {
                 System.out.print("Enter admin password: ");
                 String password = scanner.nextLine().trim();
 
-                // Send the password to the server
+
                 sendBuffer = password.getBytes();
                 DatagramPacket passwordPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
                 clientSocket.send(passwordPacket);
 
-                // Receive the response after sending the password
+
                 receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
                 clientSocket.receive(receivePacket);
                 String passwordResponse = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
                 System.out.println("Server response: " + passwordResponse);
 
-                // Check if the response contains a token
+
                 if (passwordResponse.startsWith("Your admin token: ")) {
-                    token = passwordResponse.replace("Your token: ", "").trim();
+                    token = passwordResponse.replace("Your admin token: ", "").trim();
                     System.out.println("Received admin token: " + token);
                 } else {
                     System.out.println("Failed to obtain admin token. Incorrect password, Exiting.");
-                    clientSocket.close();  // Mbyllni socket-in kur dështoni
+                    clientSocket.close();
                     return;
                 }
             } else if (response.startsWith("Your token: ")) {
-                // If the server directly gives a token without a password
+
                 token = response.replace("Your token: ", "").trim();
                 System.out.println("Received token: " + token);
             } else {
                 System.out.println("Failed to obtain a token. Exiting.");
-                clientSocket.close();  // Mbyllni socket-in kur dështoni
+                clientSocket.close();
                 return;
             }
 
-            // Step 3: Send commands to the server using the token
+
             while (true) {
                 System.out.print("Enter command (--help, --read, --write, --execute, --list_files) or 'exit' to quit: ");
                 String command = scanner.nextLine().trim();
@@ -72,20 +70,16 @@ public class Client {
                     break;
                 }
 
+
                 String message = token + " " + command;
                 sendBuffer = message.getBytes();
                 DatagramPacket commandPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
                 clientSocket.send(commandPacket);
 
+
                 receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
                 clientSocket.receive(receivePacket);
                 String commandResponse = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
-
-                if (commandResponse.equals("You have been disconnected due to inactivity.")) {
-                    System.out.println(commandResponse);
-                    break;
-                }
-
                 System.out.println("Server response: " + commandResponse);
             }
 

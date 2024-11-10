@@ -8,6 +8,7 @@ public class Server {
     private static final String ADMIN_PASSWORD = "admin123";
     private static final String LOG_FILE = "src//log.txt";
     private static final String LOG_FILE1 = "audit_log.txt";
+    private static final int MAX_CLIENTS = 5;  // numri i klientave
     private static Map<String, Boolean> tokenMap = new HashMap<>();
     private DatagramSocket serverSocket;
 
@@ -27,32 +28,30 @@ public class Server {
                 logMessage(clientAddress, message);
 
                 String response;
-                if (message.equals(ADMIN_PASSWORD)) {
+
+                // Check for maximum clients
+                if (tokenMap.size() > MAX_CLIENTS) {
+                    response = "Server is full. Maximum number of clients reached.";
+                }
+                // Admin token request
+                else if (message.equals(ADMIN_PASSWORD)) {
                     String token = UUID.randomUUID().toString();
-                    tokenMap.put(token, true); // true indicates admin privileges
+                    tokenMap.put(token, true);  // true indicates admin privileges
                     response = "Your admin token: " + token;
-                } else if (message.split(" ").length == 1) {
+                    System.out.println("Admin client connected. Token: " + token);
+                }
+                // Regular client token request
+                else if (message.equals("REQUEST_TOKEN")) {
                     String token = UUID.randomUUID().toString();
-                    tokenMap.put(token, false); // false indicates regular privileges
+                    tokenMap.put(token, false);  // false indicates regular privileges
                     response = "Your token: " + token;
-                } else {
-                    String[] parts;
-                    String token = null;
-                    String command = null;
-                    System.out.println("Received message: " + message); // Log the received message
-                    if (message.startsWith("Your admin token:")) {
-                        String[] mainParts = message.split("token: ", 2);
-                        if (mainParts.length > 1) {
-                            String[] tokenAndCommand = mainParts[1].split(" ", 2);
-                            token = tokenAndCommand[0];
-                            command = tokenAndCommand.length > 1 ? tokenAndCommand[1] : "";
-                        }
-                    } else {
-                        parts = message.split(" ", 2);
-                        token = parts[0];
-                        command = parts[1];
-                    }
-                    System.out.println("Token: " + token + ", Command: " + command);
+                    System.out.println("Regular client connected. Token: " + token);
+                }
+                // Command handling for clients
+                else {
+                    String[] parts = message.split(" ", 2);
+                    String token = parts[0];
+                    String command = parts.length > 1 ? parts[1] : "";
 
                     if (tokenMap.containsKey(token)) {
                         boolean isAdmin = tokenMap.get(token);
@@ -70,7 +69,8 @@ public class Server {
 
                             case "--write":
                                 if (isAdmin) {
-                                    response = writeFile("Shkruan nga komanda --write në " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
+                                    response = writeFile("Written by --write command on "
+                                            + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
                                 } else {
                                     response = "Permission denied. Admins only.";
                                 }
@@ -98,17 +98,14 @@ public class Server {
                     } else {
                         response = "Invalid or expired token.";
                     }
-
-                    System.out.println("Received command: '" + command + "' with token: '" + token + "' from " + clientAddress + ":" + clientPort);
-                }
-
-                if (!message.startsWith("--")) {
-                    System.out.println("Client message: " + message); // Show message from client
                 }
 
                 byte[] sendBuffer = response.getBytes();
                 DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
                 serverSocket.send(sendPacket);
+
+                // Debug: Show number of active tokens
+                System.out.println("Current number of active clients: " + tokenMap.size());
             }
         } catch (Exception e) {
             e.printStackTrace();
