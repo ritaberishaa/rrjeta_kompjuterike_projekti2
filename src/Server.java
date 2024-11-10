@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Server {
     private static final int SERVER_PORT = 12345;
@@ -11,15 +12,18 @@ public class Server {
     private static String adminToken = null;
     private static final String LOG_FILE = "src//log.txt";
     private static final String LOG_FILE1 = "audit_log.txt";
-    private static final int MAX_CLIENTS = 5;  // numri i klientave
+    private static final int MAX_CLIENTS = 5;
     private static Map<String, Boolean> tokenMap = new HashMap<>();
-    private DatagramSocket serverSocket;
+
+    private static Queue<DatagramPacket> adminQueue = new ConcurrentLinkedQueue<>();
+    private static Queue<DatagramPacket> regularQueue = new ConcurrentLinkedQueue<>();
 
     public static void main(String[] args) {
         try (DatagramSocket serverSocket = new DatagramSocket(SERVER_PORT)) {
             System.out.println("Server is running...");
 
             byte[] receiveBuffer = new byte[1024];
+
             while (true) {
                 DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
                 serverSocket.receive(receivePacket);
@@ -31,98 +35,122 @@ public class Server {
                 logMessage(clientAddress, message);
 
                 String response;
-                String tokeniadminit=null;
-                // Check for maximum clients
+
+                // Check maximum clients
                 if (tokenMap.size() > MAX_CLIENTS) {
                     response = "Server is full. Maximum number of clients reached.";
+                    sendResponse(serverSocket, response, clientAddress, clientPort);
+                    continue;
                 }
+
                 // Admin token request
                 else if (message.equals(ADMIN)) {
-                     adminToken = UUID.randomUUID().toString();
-                    tokenMap.put(adminToken, true);  // true indicates admin privileges
+                    adminToken = UUID.randomUUID().toString();
+                    tokenMap.put(adminToken, true);
                     response = "Your admin token: " + adminToken;
-                    System.out.println(response);
-                    tokeniadminit=adminToken;
                     System.out.println("Admin client connected. Token: " + adminToken);
-                }else if (message.equals(ADMIN_PASSWORD)) {
-                    if (adminToken!=null && tokenMap.containsKey(adminToken)) {
-                        response = "Your admin token: " + adminToken;}else{
+                    sendResponse(serverSocket, response, clientAddress, clientPort);
+                    continue;
+                }
+
+                // Admin password check
+                else if (message.equals(ADMIN_PASSWORD)) {
+                    if (adminToken != null && tokenMap.containsKey(adminToken)) {
+                        response = "Your admin token: " + adminToken;
+                    } else {
                         response = "No active admin session. Please connect as admin first.";
                     }
-                      // true indicates admin privileges
-                    //response = "Your admin token: " + adminToken;}
-                    //System.out.println("Admin client connected. Token: " + tokeniadminit);
+                    sendResponse(serverSocket, response, clientAddress, clientPort);
+                    continue;
                 }
+
                 // Regular client token request
                 else if (message.equals("REQUEST_TOKEN")) {
                     String token = UUID.randomUUID().toString();
-                    tokenMap.put(token, false);  // false indicates regular privileges
+                    tokenMap.put(token, false);
                     response = "Your token: " + token;
                     System.out.println("Regular client connected. Token: " + token);
+                    sendResponse(serverSocket, response, clientAddress, clientPort);
+                    continue;
                 }
-                // Command handling for clients
-                else {
-                    String[] parts = message.split(" ", 2);
-                    String token = parts[0];
-                    String command = parts.length > 1 ? parts[1] : "";
 
-                    if (tokenMap.containsKey(token)) {
-                        boolean isAdmin = tokenMap.get(token);
-                        switch (command) {
-                            case "--help":
-                                response = "Available commands: --help, --read, --write, --execute, --list_files";
-                                if (isAdmin) {
-                                    response += " (Admin only)";
-                                }
-                                break;
+                // Process commands based on token
+                String[] parts = message.split(" ", 2);
+                String token = parts[0];
+                String command = parts.length > 1 ? parts[1] : "";
 
-                            case "--read":
-                                response = readFile(LOG_FILE);
-                                break;
+                if (tokenMap.containsKey(token)) {
+                    boolean isAdmin = tokenMap.get(token);
 
-                            case "--write":
-                                if (isAdmin) {
-                                    response = writeFile("Written by --write command on "
-                                            + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
-                                } else {
-                                    response = "Permission denied. Admins only.";
-                                }
-                                break;
-
-                            case "--execute":
-                                if (isAdmin) {
-                                    response = listActiveTokens();
-                                } else {
-                                    response = "Permission denied. Admins only.";
-                                }
-                                break;
-
-                            case "--list_files":
-                                if (isAdmin) {
-                                    response = listFilesInDirectory("src");
-                                } else {
-                                    response = "Permission denied. Admins only.";
-                                }
-                                break;
-
-                            default:
-                                response = "Invalid command.";
-                        }
+                    // Queue requests based on admin status
+                    if (isAdmin) {
+                        adminQueue.add(receivePacket);
                     } else {
-                        response = "Invalid or expired token.";
+                        regularQueue.add(receivePacket);
                     }
+                } else {
+                    response = "Invalid or expired token.";
+                    sendResponse(serverSocket, response, clientAddress, clientPort);
                 }
 
-                byte[] sendBuffer = response.getBytes();
-                DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
-                serverSocket.send(sendPacket);
+                // Process requests from the queues
+                DatagramPacket packetToProcess = !adminQueue.isEmpty() ? adminQueue.poll() : regularQueue.poll();
 
-                // Debug: Show number of active tokens
-                System.out.println("Current number of active clients: " + tokenMap.size());
+                if (packetToProcess != null) {
+                    processRequest(serverSocket, packetToProcess);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private static void processRequest(DatagramSocket serverSocket, DatagramPacket packet) throws IOException {
+        String message = new String(packet.getData(), 0, packet.getLength()).trim();
+        String[] parts = message.split(" ", 2);
+        String token = parts[0];
+        String command = parts.length > 1 ? parts[1] : "";
+
+        String response;
+
+        boolean isAdmin = tokenMap.getOrDefault(token, false);
+
+        switch (command) {
+            case "--help":
+                response = "Available commands: --help, --read, --write, --execute, --list_files";
+                if (isAdmin) {
+                    response += " (Admin only)";
+                }
+                break;
+
+            case "--read":
+                response = readFile(LOG_FILE);
+                break;
+
+            case "--write":
+                response = isAdmin ? writeFile("Written by --write command on "
+                        + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n") : "Permission denied. Admins only.";
+                break;
+
+            case "--execute":
+                response = isAdmin ? listActiveTokens() : "Permission denied. Admins only.";
+                break;
+
+            case "--list_files":
+                response = isAdmin ? listFilesInDirectory("src") : "Permission denied. Admins only.";
+                break;
+
+            default:
+                response = "Invalid command.";
+        }
+
+        sendResponse(serverSocket, response, packet.getAddress(), packet.getPort());
+    }
+
+    private static void sendResponse(DatagramSocket socket, String message, InetAddress clientAddress, int clientPort) throws IOException {
+        byte[] sendBuffer = message.getBytes();
+        DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, clientAddress, clientPort);
+        socket.send(sendPacket);
     }
 
     private static void logMessage(InetAddress clientAddress, String message) {
