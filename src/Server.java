@@ -6,6 +6,9 @@ import java.util.*;
 public class Server {
     private static final int SERVER_PORT = 12345;
     private static final String ADMIN_PASSWORD = "admin123";
+
+    private static final String ADMIN = "admin";
+    private static String adminToken = null;
     private static final String LOG_FILE = "src//log.txt";
     private static final String LOG_FILE1 = "audit_log.txt";
     private static final int MAX_CLIENTS = 5;  // numri i klientave
@@ -28,17 +31,27 @@ public class Server {
                 logMessage(clientAddress, message);
 
                 String response;
-
+                String tokeniadminit=null;
                 // Check for maximum clients
                 if (tokenMap.size() > MAX_CLIENTS) {
                     response = "Server is full. Maximum number of clients reached.";
                 }
                 // Admin token request
-                else if (message.equals(ADMIN_PASSWORD)) {
-                    String token = UUID.randomUUID().toString();
-                    tokenMap.put(token, true);  // true indicates admin privileges
-                    response = "Your admin token: " + token;
-                    System.out.println("Admin client connected. Token: " + token);
+                else if (message.equals(ADMIN)) {
+                     adminToken = UUID.randomUUID().toString();
+                    tokenMap.put(adminToken, true);  // true indicates admin privileges
+                    response = "Your admin token: " + adminToken;
+                    System.out.println(response);
+                    tokeniadminit=adminToken;
+                    System.out.println("Admin client connected. Token: " + adminToken);
+                }else if (message.equals(ADMIN_PASSWORD)) {
+                    if (adminToken!=null && tokenMap.containsKey(adminToken)) {
+                        response = "Your admin token: " + adminToken;}else{
+                        response = "No active admin session. Please connect as admin first.";
+                    }
+                      // true indicates admin privileges
+                    //response = "Your admin token: " + adminToken;}
+                    //System.out.println("Admin client connected. Token: " + tokeniadminit);
                 }
                 // Regular client token request
                 else if (message.equals("REQUEST_TOKEN")) {

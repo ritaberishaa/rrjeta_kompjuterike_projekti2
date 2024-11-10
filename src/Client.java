@@ -20,12 +20,12 @@ public class Client {
             DatagramPacket requestPacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, SERVER_PORT);
             clientSocket.send(requestPacket);
 
-
+            // Receive server's response (either a token or password prompt)
             DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
             clientSocket.receive(receivePacket);
             String response = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
 
-
+            // Step 2: Handle admin password if prompted
             if (response.startsWith("Your admin token: ")) {
                 System.out.print("Enter admin password: ");
                 String password = scanner.nextLine().trim();
