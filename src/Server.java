@@ -11,7 +11,7 @@ public class Server {
     private static final int SERVER_PORT = 12345;
     private DatagramSocket serverSocket;
     private static final String ADMIN_PASSWORD = "admin123";
-
+    private static final String LOG_FILE = "audit_log.txt";
     private static Map<String, Boolean> tokenMap = new HashMap<>();
 
 
