@@ -131,4 +131,12 @@ if (tokenMap.containsKey(token)) {
         }
         return tokenStatus.toString();
     }
+    private static String writeFile(String content) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("src//write.txt", true))) {
+            writer.write(content);
+        } catch (IOException e) {
+            return "Error writing to file: " + e.getMessage();
+        }
+        return "Write command executed successfully.";
+    }
 }
