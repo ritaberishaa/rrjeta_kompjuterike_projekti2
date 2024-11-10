@@ -79,7 +79,7 @@ if (tokenMap.containsKey(token)) {
                         boolean isAdmin = tokenMap.get(token);
                         switch (command) {
                             case "--help":
-                                response = "Available commands: --help, --read, --write, --execute";
+                                response = "Available commands: --help, --read, --write, --execute, --list_files";
                                 if (isAdmin) {
                                     response += " (Admin only)";
                                 }
@@ -100,6 +100,14 @@ if (tokenMap.containsKey(token)) {
                             case "--execute":
                                 if (isAdmin) {
                                     response = listActiveTokens();
+                                } else {
+                                    response = "Permission denied. Admins only.";
+                                }
+                                break;
+
+                             case "--list_files":
+                                if (isAdmin) {
+                                    response = listFilesInDirectory("src");
                                 } else {
                                     response = "Permission denied. Admins only.";
                                 }
@@ -131,12 +139,24 @@ if (tokenMap.containsKey(token)) {
         }
         return tokenStatus.toString();
     }
-    private static String writeFile(String content) {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter("src//write.txt", true))) {
-            writer.write(content);
-        } catch (IOException e) {
-            return "Error writing to file: " + e.getMessage();
+
+    private static String listFilesInDirectory(String directoryPath) {
+        File directory = new File(directoryPath);
+        StringBuilder fileList = new StringBuilder();
+
+        if (directory.exists() && directory.isDirectory()) {
+            String[] files = directory.list();
+            if (files != null && files.length > 0) {
+                for (String file : files) {
+                    fileList.append(file).append("\n");
+                }
+            } else {
+                fileList.append("No files found.");
+            }
+        } else {
+            fileList.append("Invalid directory.");
         }
-        return "Write command executed successfully.";
+
+        return fileList.toString();
     }
 }
